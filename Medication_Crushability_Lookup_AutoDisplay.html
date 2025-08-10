@@ -1,0 +1,197 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Medication Crushability Lookup</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #e6f0fa;
+      margin: 0;
+      padding: 0;
+      text-align: center;
+      overflow-x: hidden;
+    }
+    h1 {
+      color: #2c3e50;
+      margin-top: 40px;
+    }
+    .top-section {
+      position: relative;
+      z-index: 2;
+      margin-bottom: 20px;
+    }
+    .controls {
+      position: relative;
+      display: inline-block;
+      margin-top: 20px;
+    }
+    input[type="file"] {
+      margin: 10px;
+    }
+    input[type="text"] {
+      width: 300px;
+      padding: 10px;
+      margin: 10px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+    }
+    #result {
+      margin-top: 30px;
+      font-size: 24px;
+      font-weight: bold;
+    }
+    .autocomplete-items {
+      position: absolute;
+      border: 1px solid #d4d4d4;
+      border-bottom: none;
+      border-top: none;
+      z-index: 99;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background-color: #fff;
+    }
+    .autocomplete-items div {
+      padding: 10px;
+      cursor: pointer;
+      border-bottom: 1px solid #d4d4d4;
+    }
+    .autocomplete-items div:hover {
+      background-color: #e9e9e9;
+    }
+    .image-section {
+      margin-top: 50px;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .pharmacist-img {
+      width: auto;
+      max-width: 100%;
+      filter: none !important; /* No blur */
+    }
+  </style>
+</head>
+<body>
+
+  <div class="top-section">
+    <h1>Medication Crushability Lookup</h1>
+    <div class="controls">
+      <input type="file" id="uploadExcel" accept=".xlsx, .xls">
+      <input type="text" id="drugName" placeholder="Enter Drug Name">
+      <button onclick="searchDrug()">Search</button>
+    </div>
+    <div id="result"></div>
+  </div>
+
+  <div class="image-section">
+    <img src="Pharmacist.png" class="pharmacist-img" alt="Pharmacist Image">
+  </div>
+
+  <script>
+    let drugData = [];
+    document.getElementById('uploadExcel').addEventListener('change', function(e) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        drugData = XLSX.utils.sheet_to_json(worksheet);
+        enableAutocomplete();
+        alert('Excel loaded successfully! You can now search.');
+      };
+      reader.readAsArrayBuffer(e.target.files[0]);
+    });
+
+    function searchDrug() {
+      const input = document.getElementById('drugName').value.trim().toLowerCase();
+      const found = drugData.find(row => row['Medication'] && row['Medication'].toLowerCase() === input);
+      if (found) {
+        document.getElementById('result').innerHTML = (found['Crushing Advice'] || 'No Advice').toUpperCase();
+      } else {
+        document.getElementById('result').innerHTML = "Drug Not Found";
+      }
+    }
+
+    function enableAutocomplete() {
+      const input = document.getElementById("drugName");
+      let currentFocus;
+      input.addEventListener("input", function(e) {
+        let a, b, i, val = this.value;
+        closeAllLists();
+        if (!val) return false;
+        currentFocus = -1;
+        a = document.createElement("div");
+        a.setAttribute("id", this.id + "autocomplete-list");
+        a.setAttribute("class", "autocomplete-items");
+        this.parentNode.appendChild(a);
+        for (i = 0; i < drugData.length; i++) {
+          if (drugData[i]['Medication'] && drugData[i]['Medication'].toLowerCase().includes(val.toLowerCase())) {
+            b = document.createElement("div");
+            b.innerHTML = "<strong>" + drugData[i]['Medication'].substr(0, val.length) + "</strong>";
+            b.innerHTML += drugData[i]['Medication'].substr(val.length);
+            b.innerHTML += "<input type='hidden' value='" + drugData[i]['Medication'] + "'>";
+            b.addEventListener("click", function(e) {
+              input.value = this.getElementsByTagName('input')[0].value;
+              closeAllLists();
+              searchDrug(); // Auto-display advice on selection
+            });
+            a.appendChild(b);
+          }
+        }
+      });
+      input.addEventListener("keydown", function(e) {
+        let x = document.getElementById(this.id + "autocomplete-list");
+        if (x) x = x.getElementsByTagName("div");
+        if (e.keyCode == 40) {
+          currentFocus++;
+          addActive(x);
+        } else if (e.keyCode == 38) {
+          currentFocus--;
+          addActive(x);
+        } else if (e.keyCode == 13) {
+          e.preventDefault();
+          if (currentFocus > -1 && x) {
+            x[currentFocus].click();
+          }
+        }
+      });
+
+      function addActive(x) {
+        if (!x) return false;
+        removeActive(x);
+        if (currentFocus >= x.length) currentFocus = 0;
+        if (currentFocus < 0) currentFocus = x.length - 1;
+        x[currentFocus].classList.add("autocomplete-active");
+      }
+
+      function removeActive(x) {
+        for (let i = 0; i < x.length; i++) {
+          x[i].classList.remove("autocomplete-active");
+        }
+      }
+
+      function closeAllLists(elmnt) {
+        const x = document.getElementsByClassName("autocomplete-items");
+        for (let i = 0; i < x.length; i++) {
+          if (elmnt != x[i] && elmnt != input) {
+            x[i].parentNode.removeChild(x[i]);
+          }
+        }
+      }
+
+      document.addEventListener("click", function(e) {
+        closeAllLists(e.target);
+      });
+    }
+  </script>
+
+</body>
+</html>
