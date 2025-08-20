@@ -103,12 +103,12 @@
     window.addEventListener('DOMContentLoaded', async () => {
       try {
         await loadFromCsv(CSV_URL);
-        statusEl.textContent = "Data loaded from CSV in repository.";
+        statusEl.textContent = "Reference resource has been uploaded.";
       } catch (csvErr) {
         console.warn("CSV load failed, trying XLSX…", csvErr);
         try {
           await loadFromXlsx(XLSX_URL);
-          statusEl.textContent = "Data loaded from XLSX in repository.";
+          statusEl.textContent = "Reference resource has been uploaded.";
         } catch (xlsxErr) {
           console.error(xlsxErr);
           statusEl.textContent = "Could not load data from repository. You can upload a file instead.";
