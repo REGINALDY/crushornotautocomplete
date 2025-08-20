@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -28,23 +27,20 @@
       display: inline-block;
       margin-top: 20px;
     }
-    input[type="file"] {
-      margin: 10px;
-    }
-    input[type="text"] {
-      width: 300px;
-      padding: 10px;
-      margin: 10px;
-    }
-    button {
-      padding: 10px 20px;
-      font-size: 16px;
-    }
+    input[type="file"] { margin: 10px; }
+    input[type="text"] { width: 300px; padding: 10px; margin: 10px; }
+    button { padding: 10px 20px; font-size: 16px; }
+
     #result {
       margin-top: 30px;
       font-size: 24px;
       font-weight: bold;
+      text-align: center; /* centered under the search bar */
     }
+    #result.error {
+      color: #c0392b;      /* red for "Drug Not Found" */
+    }
+
     .autocomplete-items {
       position: absolute;
       border: 1px solid #d4d4d4;
@@ -61,9 +57,8 @@
       cursor: pointer;
       border-bottom: 1px solid #d4d4d4;
     }
-    .autocomplete-items div:hover {
-      background-color: #e9e9e9;
-    }
+    .autocomplete-items div:hover { background-color: #e9e9e9; }
+
     .image-section {
       margin-top: 50px;
       width: 100%;
@@ -71,11 +66,8 @@
       justify-content: center;
       align-items: center;
     }
-    .pharmacist-img {
-      width: auto;
-      max-width: 100%;
-      filter: none !important; /* No blur */
-    }
+    .pharmacist-img { width: auto; max-width: 100%; filter: none !important; }
+    .note { font-size: 12px; color: #555; margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -83,9 +75,11 @@
   <div class="top-section">
     <h1>Medication Crushability Lookup</h1>
     <div class="controls">
-      <input type="file" id="uploadExcel" accept=".xlsx, .xls">
+      <!-- Optional local override remains -->
+      <input type="file" id="uploadExcel" accept=".xlsx, .xls, .csv" title="Load a local file (optional)">
       <input type="text" id="drugName" placeholder="Enter Drug Name">
       <button onclick="searchDrug()">Search</button>
+      <div class="note" id="status">Loading data…</div>
     </div>
     <div id="result"></div>
   </div>
@@ -95,35 +89,107 @@
   </div>
 
   <script>
+    // URLs you provided
+    const CSV_URL  = "https://raw.githubusercontent.com/REGINALDY/crushornotautocomplete/refs/heads/main/Drug_Crush_List.csv";
+    const XLSX_BLOB_URL = "https://github.com/REGINALDY/crushornotautocomplete/blob/main/Drug_Crush_List.xlsx.xlsx";
+    // Convert blob URL to raw URL
+    const XLSX_URL = XLSX_BLOB_URL.replace("https://github.com/", "https://raw.githubusercontent.com/").replace("/blob/", "/");
+
     let drugData = [];
+    const statusEl = document.getElementById('status');
+    const resultEl = document.getElementById('result');
+
+    // Try CSV first, then XLSX
+    window.addEventListener('DOMContentLoaded', async () => {
+      try {
+        await loadFromCsv(CSV_URL);
+        statusEl.textContent = "Data loaded from CSV in repository.";
+      } catch (csvErr) {
+        console.warn("CSV load failed, trying XLSX…", csvErr);
+        try {
+          await loadFromXlsx(XLSX_URL);
+          statusEl.textContent = "Data loaded from XLSX in repository.";
+        } catch (xlsxErr) {
+          console.error(xlsxErr);
+          statusEl.textContent = "Could not load data from repository. You can upload a file instead.";
+        }
+      }
+    });
+
+    // Load CSV using SheetJS (no extra library)
+    async function loadFromCsv(url) {
+      const res = await fetch(url + "?v=" + Date.now());
+      if (!res.ok) throw new Error("CSV fetch failed: " + res.status);
+      const csvText = await res.text();
+      const wb = XLSX.read(csvText, { type: "string" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      drugData = XLSX.utils.sheet_to_json(ws); // expects headers Medication, Crushing Advice
+      enableAutocomplete();
+    }
+
+    // Load XLSX directly
+    async function loadFromXlsx(url) {
+      const res = await fetch(url + "?v=" + Date.now());
+      if (!res.ok) throw new Error("XLSX fetch failed: " + res.status);
+      const buf = await res.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      drugData = XLSX.utils.sheet_to_json(ws);
+      enableAutocomplete();
+    }
+
+    // Optional local upload override (CSV or XLSX)
     document.getElementById('uploadExcel').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
       const reader = new FileReader();
-      reader.onload = function(e) {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        drugData = XLSX.utils.sheet_to_json(worksheet);
-        enableAutocomplete();
-        alert('Excel loaded successfully! You can now search.');
+      reader.onload = function(evt) {
+        const name = (file.name || "").toLowerCase();
+        try {
+          if (name.endsWith(".csv")) {
+            const wb = XLSX.read(evt.target.result, { type: "binary" });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            drugData = XLSX.utils.sheet_to_json(ws);
+          } else {
+            const data = new Uint8Array(evt.target.result);
+            const wb = XLSX.read(data, { type: 'array' });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            drugData = XLSX.utils.sheet_to_json(ws);
+          }
+          enableAutocomplete();
+          statusEl.textContent = "Data loaded from local file.";
+          alert('File loaded successfully! You can now search.');
+        } catch (err) {
+          console.error(err);
+          alert("Could not read the file. Please ensure it has 'Medication' and 'Crushing Advice' headers.");
+        }
       };
-      reader.readAsArrayBuffer(e.target.files[0]);
+      if (file.name.toLowerCase().endsWith(".csv")) {
+        reader.readAsBinaryString(file);
+      } else {
+        reader.readAsArrayBuffer(file);
+      }
     });
 
     function searchDrug() {
       const input = document.getElementById('drugName').value.trim().toLowerCase();
-      const found = drugData.find(row => row['Medication'] && row['Medication'].toLowerCase() === input);
+      const found = drugData.find(row =>
+        row['Medication'] && row['Medication'].toString().trim().toLowerCase() === input
+      );
       if (found) {
-        document.getElementById('result').innerHTML = (found['Crushing Advice'] || 'No Advice').toUpperCase();
+        resultEl.classList.remove('error');
+        resultEl.textContent = (found['Crushing Advice'] || 'No Advice').toUpperCase();
       } else {
-        document.getElementById('result').innerHTML = "Drug Not Found - Contact Pharmacist";
+        resultEl.classList.add('error');
+        resultEl.textContent = "Drug Not Found - Contact Pharmacist";
       }
     }
 
     function enableAutocomplete() {
       const input = document.getElementById("drugName");
       let currentFocus;
-      input.addEventListener("input", function(e) {
+
+      input.addEventListener("input", function() {
         let a, b, i, val = this.value;
         closeAllLists();
         if (!val) return false;
@@ -133,63 +199,36 @@
         a.setAttribute("class", "autocomplete-items");
         this.parentNode.appendChild(a);
         for (i = 0; i < drugData.length; i++) {
-          if (drugData[i]['Medication'] && drugData[i]['Medication'].toLowerCase().includes(val.toLowerCase())) {
+          const med = (drugData[i]['Medication'] || "").toString();
+          if (med.toLowerCase().includes(val.toLowerCase())) {
             b = document.createElement("div");
-            b.innerHTML = "<strong>" + drugData[i]['Medication'].substr(0, val.length) + "</strong>";
-            b.innerHTML += drugData[i]['Medication'].substr(val.length);
-            b.innerHTML += "<input type='hidden' value='" + drugData[i]['Medication'] + "'>";
-            b.addEventListener("click", function(e) {
+            b.innerHTML = "<strong>" + med.substr(0, val.length) + "</strong>" + med.substr(val.length);
+            b.innerHTML += "<input type='hidden' value=\"" + med.replace(/"/g, '&quot;') + "\">";
+            b.addEventListener("click", function() {
               input.value = this.getElementsByTagName('input')[0].value;
               closeAllLists();
-              searchDrug(); // Auto-display advice on selection
+              searchDrug(); // show advice immediately
             });
             a.appendChild(b);
           }
         }
       });
+
       input.addEventListener("keydown", function(e) {
         let x = document.getElementById(this.id + "autocomplete-list");
         if (x) x = x.getElementsByTagName("div");
-        if (e.keyCode == 40) {
-          currentFocus++;
-          addActive(x);
-        } else if (e.keyCode == 38) {
-          currentFocus--;
-          addActive(x);
-        } else if (e.keyCode == 13) {
-          e.preventDefault();
-          if (currentFocus > -1 && x) {
-            x[currentFocus].click();
-          }
-        }
+        if (e.key === "ArrowDown") { currentFocus++; addActive(x); }
+        else if (e.key === "ArrowUp") { currentFocus--; addActive(x); }
+        else if (e.key === "Enter") { e.preventDefault(); if (currentFocus > -1 && x) x[currentFocus].click(); }
       });
 
-      function addActive(x) {
-        if (!x) return false;
-        removeActive(x);
-        if (currentFocus >= x.length) currentFocus = 0;
-        if (currentFocus < 0) currentFocus = x.length - 1;
-        x[currentFocus].classList.add("autocomplete-active");
+      function addActive(x){ if(!x) return; removeActive(x); if(currentFocus>=x.length) currentFocus=0; if(currentFocus<0) currentFocus=x.length-1; x[currentFocus].classList.add("autocomplete-active"); }
+      function removeActive(x){ for(let i=0;i<x.length;i++) x[i].classList.remove("autocomplete-active"); }
+      function closeAllLists(elmnt){
+        const x=document.getElementsByClassName("autocomplete-items");
+        for(let i=0;i<x.length;i++){ if(elmnt!=x[i] && elmnt!=input){ x[i].parentNode.removeChild(x[i]); } }
       }
-
-      function removeActive(x) {
-        for (let i = 0; i < x.length; i++) {
-          x[i].classList.remove("autocomplete-active");
-        }
-      }
-
-      function closeAllLists(elmnt) {
-        const x = document.getElementsByClassName("autocomplete-items");
-        for (let i = 0; i < x.length; i++) {
-          if (elmnt != x[i] && elmnt != input) {
-            x[i].parentNode.removeChild(x[i]);
-          }
-        }
-      }
-
-      document.addEventListener("click", function(e) {
-        closeAllLists(e.target);
-      });
+      document.addEventListener("click", function(e){ closeAllLists(e.target); });
     }
   </script>
 
