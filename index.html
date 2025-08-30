@@ -103,12 +103,13 @@
     window.addEventListener('DOMContentLoaded', async () => {
       try {
         await loadFromCsv(CSV_URL);
-        statusEl.textContent = "A reference resource has been uploaded. Begin search.";
+        statusEl.textContent = '<span style="color: red; font-weight: bold;">A reference resource has been uploaded for Illustrative purposes only - Do not use in Clinical Practice! Begin search.</span>';
+;
       } catch (csvErr) {
         console.warn("CSV load failed, trying XLSX…", csvErr);
         try {
           await loadFromXlsx(XLSX_URL);
-          statusEl.textContent = "A reference resource has been uploaded. Begin search.";
+          statusEl.textContent = "<span style="color: red; font-weight: bold;">A reference resource has been uploaded for Illustrative purposes only - Do not use in Clinical Practice! Begin search.</span>";
         } catch (xlsxErr) {
           console.error(xlsxErr);
           statusEl.textContent = "Could not load data from repository. You can upload a file instead.";
